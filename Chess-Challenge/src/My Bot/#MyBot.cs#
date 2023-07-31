@@ -1,0 +1,11 @@
+using ChessChallenge.API;
+
+public class MyBot : IChessBot
+{
+    public Move Think(Board board, Timer timer)
+    {
+        Move[] moves = board.GetLegalMoves();
+	if 
+        return moves[0];
+    }
+}
