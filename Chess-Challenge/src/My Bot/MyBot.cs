@@ -10,10 +10,7 @@ public class MyBot : IChessBot
         {
             return moves[1];
         }
-        if ((moves) >= 2)
-        {
-            return moves[1];
-        }
+	
         return moves[0];
     }
 }
