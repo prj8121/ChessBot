@@ -21,11 +21,22 @@ public class MyBot : IChessBot
         for(int i = 0; i < moves.Length; i++){
             board.MakeMove(moves[i]);
             scores.Add(ScoreBoard(board));
-            Console.WriteLine($"score: \t{scores[i]} \tmove:{moves[i].StartSquare.Name + moves[i].TargetSquare.Name}");
             board.UndoMove(moves[i]);
         }
 
         int highestScoreIndex = scores.IndexOf(scores.Max());
+        List<int> highestIndices = scores
+            .Select((number, index) => new { Number = number, Index = index })
+            .OrderByDescending(item => item.Number)
+            .Take(3)
+            .Select(item => item.Index)
+            .ToList();
+
+        foreach (int i in highestIndices){
+            Console.WriteLine(
+                $"score: \t{scores[i]} \tmove:{moveToString(moves[i])}"
+                );
+        }
         return moves[highestScoreIndex];
     }
 
@@ -40,10 +51,16 @@ public class MyBot : IChessBot
     };
 
     private static float ScoreBoard(Board board){
+        float fWeight = 0.1F;
         int pVal = CountPieceVal(board);
         float tVal = SearchCaptureTree(board);
-        float score = (float)pVal + tVal;
+        float fVal = CountPieceFreedom(board);
+        float score = (float)pVal + tVal + (fVal*fWeight);
         return score;
+    }
+
+    private static String moveToString(Move move){
+        return move.StartSquare.Name + move.TargetSquare.Name;
     }
 
     private static int CountPieceVal(Board board)
@@ -62,6 +79,21 @@ public class MyBot : IChessBot
 
     private static float CountPieceFreedom(Board board) {
         float total = 0;
+        /*
+        PieceList[] pLists = board.GetAllPieceLists();
+        foreach (PieceList plist in pLists){
+            foreach(Piece piece in plist){
+                piece.Square.
+            }
+        }
+        */
+
+        int factor = board.IsWhiteToMove? 1 : -1;
+        total += factor * board.GetLegalMoves().Length;
+        board.ForceSkipTurn();
+        total -= factor * board.GetLegalMoves().Length;
+        board.UndoSkipTurn();
+
         return total;
     }
 
