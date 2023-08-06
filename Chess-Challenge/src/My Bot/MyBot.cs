@@ -9,18 +9,17 @@ public class MyBot : IChessBot
 {
     public Move Think(Board board, Timer timer)
     {
+        int factor = board.IsWhiteToMove ? 1 : -1;
         Move[] moves = board.GetLegalMoves();
-
-        /*Console.WriteLine("CountThreatVal:");
-        Console.WriteLine(CountThreatVal(board));
-        Console.WriteLine("CountPieceVal:");
-        Console.WriteLine(CountPieceVal(board));*/
 
         Console.WriteLine("--------------");
         List<float> scores = new(moves.Length);
+        List <(float, float, float)> breakDownList = new(moves.Length);
         for(int i = 0; i < moves.Length; i++){
             board.MakeMove(moves[i]);
-            scores.Add(ScoreBoard(board));
+            var tup = ScoreBoard(board);
+            scores.Add(factor * tup.Item1);
+            breakDownList.Add(tup.Item2);
             board.UndoMove(moves[i]);
         }
 
@@ -33,8 +32,13 @@ public class MyBot : IChessBot
             .ToList();
 
         foreach (int i in highestIndices){
+            var breakDown = breakDownList[i];
             Console.WriteLine(
-                $"score: \t{scores[i]} \tmove:{moveToString(moves[i])}"
+                $"score: {scores[i]}\t" +
+                $"move: {moveToString(moves[i])}\t" +
+                $"pVal: {breakDown.Item1}\t" + 
+                $"tVal: {breakDown.Item2}\t" + 
+                $"fVal: {breakDown.Item3}\t"
                 );
         }
         return moves[highestScoreIndex];
@@ -50,13 +54,17 @@ public class MyBot : IChessBot
         {PieceType.King, 100}
     };
 
-    private static float ScoreBoard(Board board){
-        float fWeight = 0.1F;
-        int pVal = CountPieceVal(board);
-        float tVal = SearchCaptureTree(board);
-        float fVal = CountPieceFreedom(board);
-        float score = (float)pVal + tVal + (fVal*fWeight);
-        return score;
+    private static (float, (float, float, float)) ScoreBoard(Board board){
+        int factor = board.IsWhiteToMove ? 1 : -1;
+        float fWeight = 0.02F;
+        float pVal = CountPieceVal(board);
+        //float tVal = factor * SearchCaptureTree(board);
+        float tVal = CountThreatVal(board);
+        float fVal = CountPieceFreedom(board) * fWeight;
+        float score = pVal + tVal + fVal;
+        var breakDown = (pVal, tVal, fVal);
+        var ret = (score, breakDown);
+        return ret;
     }
 
     private static String moveToString(Move move){
@@ -79,15 +87,6 @@ public class MyBot : IChessBot
 
     private static float CountPieceFreedom(Board board) {
         float total = 0;
-        /*
-        PieceList[] pLists = board.GetAllPieceLists();
-        foreach (PieceList plist in pLists){
-            foreach(Piece piece in plist){
-                piece.Square.
-            }
-        }
-        */
-
         int factor = board.IsWhiteToMove? 1 : -1;
         total += factor * board.GetLegalMoves().Length;
         board.ForceSkipTurn();
@@ -103,20 +102,46 @@ public class MyBot : IChessBot
     }
 
     private static float SCapTree_r(Board board, int depth){
-        Move[] moveList = board.GetLegalMoves(capturesOnly:true);
-        List<float> scoreList = new(moveList.Length);
+        List<Move> capList = new(board.GetLegalMoves(capturesOnly:true));
+        List<Move> moveList = new(board.GetLegalMoves());
+        List<Move> nonCapList = new(moveList.Except(capList));
+        int factor = board.IsWhiteToMove ? 1 : -1;
 
-        if (moveList.Length == 0 || depth > 4){
-            return CountPieceVal(board);
+        if (nonCapList.Count > 0){
+            Move lowestThreatMove = nonCapList[0];
+            board.MakeMove(nonCapList[0]);
+            float lowestThreatMoveVal = -1 * factor * CountThreatVal(board);
+            board.UndoMove(nonCapList[0]);
+            foreach (Move move in nonCapList) {
+                //Console.WriteLine(moveToString(move));
+                board.MakeMove(move);
+                float immediateThreatVal = -1 * factor * CountThreatVal(board);
+                if (immediateThreatVal < lowestThreatMoveVal){
+                    lowestThreatMove = move;
+                    lowestThreatMoveVal = immediateThreatVal;
+                }
+                board.UndoMove(move);
+            }
+            //Console.WriteLine(moveToString(lowestThreatMove));
+            capList.Add(lowestThreatMove);
         }
 
+        List<float> scoreList = new(capList.Count);
 
-        foreach (Move move in moveList){
-            board.MakeMove(move);
-            scoreList.Add(SCapTree_r(board, depth+1));
-            board.UndoMove(move);
+        if (capList.Count < 2 || depth > 8){
+            return factor * CountPieceVal(board);
         }
-        return scoreList.Max();
+        
+        /* I think I need to account for the fact that the opponent won't just
+         mindlessly capture over and over, perhaps by adding a few moves to 
+         explore that maximally reduce the threat value */
+        
+        foreach (Move cap in capList){
+            board.MakeMove(cap);
+            scoreList.Add(factor * SCapTree_r(board, depth+1));
+            board.UndoMove(cap);
+        }
+        return scoreList.Min();
     }
 
     private static float CountThreatVal_r(Board board, int depth=0){
@@ -137,6 +162,28 @@ public class MyBot : IChessBot
         }
 
         return total;
+    }
+
+
+    private static float immediateThreatVal(Board board){
+        return immediateThreatVal_r(board, 0);
+    }
+
+    private static float immediateThreatVal_r(Board board, int depth){
+
+        int factor = board.IsWhiteToMove ? 1 : -1;
+        float currentThreatVal = CountThreatVal(board);
+        // If the currentThreatVal is really small we are probably fine
+        if (Math.Abs(factor * currentThreatVal) < 0.5 || depth > 12){
+            return currentThreatVal;
+        }
+
+        // if currentThreatVal is unfavorable look for a move that equalizes
+        if (factor * currentThreatVal < 0){
+            
+        }
+
+
     }
 
     private static float CountThreatVal(Board board){
