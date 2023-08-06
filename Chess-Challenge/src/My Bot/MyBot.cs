@@ -31,6 +31,19 @@ public class MyBot : IChessBot
             .Select(item => item.Index)
             .ToList();
 
+        highestIndices.AddRange(new int[]{ 
+            breakDownList
+                .Select((tuple, index) => new { Value = tuple.Item1, Index = index})
+                .MaxBy(item => item.Value).Index,
+            breakDownList
+                .Select((tuple, index) => new { Value = tuple.Item2, Index = index})
+                .MaxBy(item => item.Value).Index,
+            breakDownList
+                .Select((tuple, index) => new { Value = tuple.Item3, Index = index})
+                .MaxBy(item => item.Value).Index
+        });
+        
+
         foreach (int i in highestIndices){
             var breakDown = breakDownList[i];
             Console.WriteLine(
@@ -59,7 +72,8 @@ public class MyBot : IChessBot
         float fWeight = 0.02F;
         float pVal = CountPieceVal(board);
         //float tVal = factor * SearchCaptureTree(board);
-        float tVal = CountThreatVal(board);
+        //float tVal = CountThreatVal(board);
+        float tVal = ImmediateThreatVal(board);
         float fVal = CountPieceFreedom(board) * fWeight;
         float score = pVal + tVal + fVal;
         var breakDown = (pVal, tVal, fVal);
@@ -165,25 +179,54 @@ public class MyBot : IChessBot
     }
 
 
-    private static float immediateThreatVal(Board board){
-        return immediateThreatVal_r(board, 0);
+    private static float ImmediateThreatVal(Board board){
+        return ImmediateThreatVal_r(board, 0, 0);
     }
 
-    private static float immediateThreatVal_r(Board board, int depth){
+    private static float ImmediateThreatVal_r(Board board, int depth, float netChange){
 
+        int maxDepth = 12;
         int factor = board.IsWhiteToMove ? 1 : -1;
         float currentThreatVal = CountThreatVal(board);
-        // If the currentThreatVal is really small we are probably fine
-        if (Math.Abs(factor * currentThreatVal) < 0.5 || depth > 12){
-            return currentThreatVal;
+
+        //if (Math.Abs(currentThreatVal) < 0.5 || depth > 12){
+        if (depth > maxDepth){
+            //if (depth > maxDepth) Console.WriteLine(depth);
+            //return currentThreatVal + netChange;
+            return netChange;
         }
 
-        // if currentThreatVal is unfavorable look for a move that equalizes
-        if (factor * currentThreatVal < 0){
+        Move[] caps = board.GetLegalMoves(capturesOnly:true);
+        
+        if (caps.Length != 0){
+            List<float> netChanges = new(caps.Length);
+            List<Move> searchedMoves = new(caps.Length);
+            foreach(Move move in caps){
+                // Explore every time for even and positive one-move-takes
+                if (PieceValMap[move.CapturePieceType] >= PieceValMap[move.MovePieceType]){
+                    depth += 1;
+                } else {
+                    depth += 3;
+                }
+                board.MakeMove(move);
+                //ImmediateThreatVal_r(board, depth + 1, netChange + (factor * PieceValMap[move.CapturePieceType]));
+                searchedMoves.Add(move);
+                netChanges.Add(ImmediateThreatVal_r(board, depth, netChange + (factor * PieceValMap[move.CapturePieceType])));
+                board.UndoMove(move);
+            }
+            if (netChanges.Count > 0){
+                if (board.IsWhiteToMove){
+                    return netChanges.Max();
+                } else {
+                    return netChanges.Min();
+                }
+            } else {
+                return netChange;
+            }
             
+        } else {
+            return netChange;
         }
-
-
     }
 
     private static float CountThreatVal(Board board){
